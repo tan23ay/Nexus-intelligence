@@ -1,7 +1,8 @@
 # Nexus Intelligence — static site on Netlify.
 # Each build fetches the latest news (standard-library Python, no API keys) and
-# publishes site/. GitHub Actions (.github/workflows/refresh.yml) triggers a
-# rebuild every hour via a Netlify build hook.
+# publishes site/. The scheduled function netlify/functions/hourly-refresh.mjs
+# triggers a rebuild every hour via a build hook (env var BUILD_HOOK_URL);
+# .github/workflows/refresh.yml is a backup trigger.
 
 [build]
   publish = "site"

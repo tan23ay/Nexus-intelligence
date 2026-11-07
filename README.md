@@ -8,7 +8,8 @@ Advanced Packaging (CoWoS/HBM), plus Finance, Education, Automations and Automob
 ## How it runs online (Netlify)
 
 ```
-GitHub Actions (hourly) ──POST──► Netlify build hook
+Netlify Scheduled Function (hourly) ──POST──► Netlify build hook
+GitHub Actions (backup, only if data > 75 min old) ──┘
 Netlify build: python3 local/fetch_news.py  ──►  site/data.json  ──►  site/ published
 ```
 
@@ -19,10 +20,12 @@ Netlify build: python3 local/fetch_news.py  ──►  site/data.json  ──►
 - Edit the `SOURCES` list in `local/fetch_news.py` to add or remove feeds; push to redeploy.
 
 **One-time setup:** connect this repo in Netlify (build settings come from `netlify.toml`),
-then create a build hook and save its URL as the GitHub secret `NETLIFY_BUILD_HOOK`.
+then create a build hook and save its URL as the Netlify environment variable
+`BUILD_HOOK_URL` (used by `netlify/functions/hourly-refresh.mjs`) and as the GitHub
+secret `NETLIFY_BUILD_HOOK` (backup workflow).
 
-Note: GitHub pauses scheduled workflows after 60 days with no repo activity. If the site
-stops updating, re-enable the workflow in the Actions tab.
+Note: GitHub cron is best-effort and pauses after 60 days with no repo activity, which is
+why the Netlify function is the main trigger.
 
 ## Cloud version (`cloud/`)
 
