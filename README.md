@@ -15,8 +15,11 @@ Netlify build: python3 local/fetch_news.py  ──►  site/data.json  ──►
 
 - `local/fetch_news.py` pulls ~19 RSS feeds (Python standard library only, no API keys),
   classifies stories with keyword rules, scores impact, detects funding deals, dedups,
-  and keeps a rolling 10-day history.
+  and keeps a rolling 31-day history.
 - `site/index.html` is the dashboard. Reads and bookmarks are stored in each browser.
+- Click any topic, sector or source on a card for **Related news** over the past week or
+  past month. The view has a shareable link (e.g. `/#topic=sub:hbm_memory&range=month`)
+  and a matching Google News search.
 - Edit the `SOURCES` list in `local/fetch_news.py` to add or remove feeds; push to redeploy.
 
 **One-time setup:** connect this repo in Netlify (build settings come from `netlify.toml`),

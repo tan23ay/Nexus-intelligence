@@ -26,7 +26,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_FILE = ROOT / "site" / "data.json"
-KEEP_DAYS = 10
+KEEP_DAYS = 31  # enough history for the "past month" related-news view
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) NexusIntelligence/1.0 (personal news reader)"
 
 # (name, feed url, default category)

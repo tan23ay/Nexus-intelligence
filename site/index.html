@@ -68,6 +68,18 @@
   .chip.sub { background: var(--accent-soft); color: #9fc0ff; border-color: transparent; text-transform: none; }
   .chip.gcb { background: var(--gold-soft); color: var(--gold); border-color: rgba(245,181,68,.35); font-weight: 800; }
   .chip.fund { background: rgba(60,207,145,.1); color: var(--green); border-color: transparent; }
+  button.chip, button.srcbtn { cursor: pointer; }
+  button.chip:hover { border-color: var(--accent); color: var(--text); }
+  .srcbtn { font-size: 11px; color: var(--muted); padding: 0; }
+  .srcbtn:hover { color: var(--accent); text-decoration: underline; }
+
+  .related { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; justify-content: space-between;
+    padding: 16px 18px; margin-bottom: 18px; border: 1px solid var(--line-2); border-radius: var(--radius);
+    background: linear-gradient(180deg, var(--accent-soft), var(--panel) 80%); }
+  .related .section-label { color: #9fc0ff; margin: 0 0 4px; }
+  .related h2 { margin: 0; font-size: 20px; text-transform: capitalize; }
+  .related p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+  .related .ctl { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
   .score { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
   .title { display: block; font-size: 16px; font-weight: 600; line-height: 1.35; margin-bottom: 4px; }
   .title:hover { color: var(--accent); }
@@ -164,7 +176,9 @@ const store = (() => {
   try { s = { ...s, ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch {}
   return { s, save() { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} } };
 })();
-const state = { data: null, showRead: false, q: "", limit: PAGE, reads: new Set(store.s.reads) };
+const state = { data: null, showRead: false, q: "", limit: PAGE, reads: new Set(store.s.reads),
+  topic: null, range: "week" };  // topic = { kind: "sub" | "cat" | "source", value }
+const RANGES = { week: 7, month: 31 };
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -176,10 +190,43 @@ function ago(iso) {
 
 function persist() { store.s.reads = [...state.reads]; store.save(); }
 
+// --- related-news view (#topic=sub:hbm&range=week), shareable by URL
+function readHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  const t = p.get("topic") || "", i = t.indexOf(":");
+  const kind = t.slice(0, i), value = t.slice(i + 1);
+  state.topic = i > 0 && value && ["sub", "cat", "source"].includes(kind) ? { kind, value } : null;
+  state.range = p.get("range") in RANGES ? p.get("range") : "week";
+  state.limit = PAGE;
+}
+function goTopic(topic, range = "week") {
+  const url = topic ? `#topic=${encodeURIComponent(topic.kind + ":" + topic.value)}&range=${range}`
+    : location.pathname + location.search;
+  history.pushState(null, "", url);
+  readHash(); render(); window.scrollTo({ top: 0 });
+}
+const topicName = t => t.kind === "source" ? t.value : label(t.value);
+const topicKind = t => ({ sub: "Topic", cat: "Sector", source: "Source" })[t.kind];
+function matchesTopic(a, t) {
+  if (t.kind === "sub") return (a.subcategories || []).includes(t.value);
+  if (t.kind === "cat") return a.primary_category === t.value || (a.secondary_categories || []).includes(t.value);
+  return a.source === t.value;
+}
+function googleNewsLink(t, range) {
+  let term = topicName(t);
+  if (t.kind === "source") {   // search the outlet's own site
+    const a = state.data.articles.find(x => x.source === t.value);
+    try { if (a) term = "site:" + new URL(a.url).hostname.replace(/^www\./, ""); } catch {}
+  }
+  return `https://news.google.com/search?q=${encodeURIComponent(`${term} when:${RANGES[range]}d`)}`;
+}
+
 function visible() {
   const { tab, sort, bm } = store.s;
   const q = state.q.toLowerCase();
+  const t = state.topic, since = Date.now() - RANGES[state.range] * 864e5;
   let list = state.data.articles.filter(a => {
+    if (t) return matchesTopic(a, t) && new Date(a.published_at) >= since;   // includes read stories
     if (tab === "saved") return !!bm[a.id];
     if (!state.showRead && state.reads.has(a.id)) return false;
     if (tab !== "all" && a.primary_category !== tab) return false;
@@ -194,14 +241,15 @@ function visible() {
 function card(a, hero) {
   const bm = store.s.bm[a.id] || {};
   const read = state.reads.has(a.id);
-  const subs = (a.subcategories || []).map(s => `<span class="chip sub">${esc(label(s))}</span>`).join("");
+  const subs = (a.subcategories || []).map(s =>
+    `<button class="chip sub" data-topic="sub" data-val="${esc(s)}" title="All ${esc(label(s))} news, past week / month">${esc(label(s))}</button>`).join("");
   return `<article class="card ${a.is_game_changer ? "gc" : ""} ${hero ? "hero" : ""} ${read ? "read" : ""}" data-id="${a.id}">
     <div class="body">
       <div class="meta">
         ${a.is_game_changer ? `<span class="chip gcb">⚡ Game-changer ${a.impact_score.toFixed(1)}</span>` : `<span class="score" title="Impact score">${a.impact_score.toFixed(1)}</span>`}
-        <span class="chip">${esc(label(a.primary_category))}</span>${subs}
+        <button class="chip" data-topic="cat" data-val="${esc(a.primary_category)}" title="All ${esc(label(a.primary_category))} news, past week / month">${esc(label(a.primary_category))}</button>${subs}
         ${a.funding ? `<span class="chip fund">${esc(a.funding.raw_amount_string)}</span>` : ""}
-        <span>${esc(a.source)} · ${ago(a.published_at)}</span>
+        <span><button class="srcbtn" data-topic="source" data-val="${esc(a.source)}" title="More from ${esc(a.source)}">${esc(a.source)}</button> · ${ago(a.published_at)}</span>
       </div>
       <a class="title" href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a>
       ${a.summary ? `<p class="summary">${esc(a.summary)}</p>` : ""}
@@ -223,19 +271,35 @@ function render() {
   counts.all = all.filter(a => !state.reads.has(a.id)).length;
   counts.saved = Object.keys(bm).filter(id => all.some(a => a.id === id)).length;
 
+  const t = state.topic;
   $("tabs").innerHTML = CATS.map(([id, name]) =>
-    `<button class="tab ${tab === id ? "on" : ""}" data-tab="${id}">${esc(name)} <span class="n">${counts[id] || 0}</span></button>`).join("");
+    `<button class="tab ${!t && tab === id ? "on" : ""}" data-tab="${id}">${esc(name)} <span class="n">${counts[id] || 0}</span></button>`).join("");
   document.querySelectorAll("#sort button").forEach(b => b.classList.toggle("on", b.dataset.v === sort));
-  $("showread").hidden = tab === "saved";
+  $("showread").hidden = tab === "saved" || !!t;
   $("showread").textContent = state.showRead ? "Hide read" : `Show read (${state.reads.size})`;
 
   const list = visible();
-  const heroes = tab === "saved" || state.q ? [] : list.filter(a => a.is_game_changer).slice(0, 4);
+  const heroes = tab === "saved" || state.q || t ? [] : list.filter(a => a.is_game_changer).slice(0, 4);
   const rest = list.filter(a => !heroes.includes(a));
-  $("heroWrap").innerHTML = heroes.length
+  const rangeTxt = state.range === "month" ? "past month" : "past week";
+  $("heroWrap").innerHTML = t
+    ? `<section class="related">
+        <div><div class="section-label">RELATED NEWS · ${esc(topicKind(t).toUpperCase())}</div>
+          <h2>${esc(topicName(t))}</h2>
+          <p>${list.length} ${list.length === 1 ? "story" : "stories"} in the ${rangeTxt}</p></div>
+        <div class="ctl">
+          <div class="seg">${Object.keys(RANGES).map(r =>
+            `<button data-range="${r}" class="${state.range === r ? "on" : ""}">Past ${r}</button>`).join("")}</div>
+          <a class="link" href="${esc(googleNewsLink(t, state.range))}" target="_blank" rel="noopener noreferrer">Google News ↗</a>
+          <button class="link" data-copy>Copy link</button>
+          <button class="link" data-clear>✕ Back to all</button>
+        </div></section>`
+    : heroes.length
     ? `<div class="section-label">GAME-CHANGERS</div><div class="heroes">${heroes.map(a => card(a, true)).join("")}</div>` : "";
+  const emptyMsg = t ? `No ${esc(topicName(t))} stories in the ${rangeTxt}${state.q ? " matching your search" : ""}.`
+    : tab === "saved" ? "Nothing bookmarked yet." : state.q ? "No matches." : "All caught up here. New stories arrive every hour.";
   $("feed").innerHTML = rest.slice(0, state.limit).map(a => card(a)).join("") ||
-    (heroes.length ? "" : `<div class="empty">${tab === "saved" ? "Nothing bookmarked yet." : state.q ? "No matches." : "All caught up here. New stories arrive every hour."}</div>`);
+    (heroes.length ? "" : `<div class="empty">${emptyMsg}</div>`);
   $("more").hidden = rest.length <= state.limit;
   $("more").textContent = `Show more (${rest.length - state.limit})`;
 
@@ -267,8 +331,21 @@ async function load() {
 // --- events
 $("tabs").addEventListener("click", e => {
   const b = e.target.closest("[data-tab]"); if (!b) return;
-  store.s.tab = b.dataset.tab; state.limit = PAGE; store.save(); render(); window.scrollTo({ top: 0 });
+  store.s.tab = b.dataset.tab; state.limit = PAGE; store.save();
+  if (state.topic) goTopic(null); else { render(); window.scrollTo({ top: 0 }); }
 });
+document.addEventListener("click", e => {
+  const tp = e.target.closest("[data-topic]");
+  if (tp) return goTopic({ kind: tp.dataset.topic, value: tp.dataset.val }, state.topic ? state.range : "week");
+  const rg = e.target.closest("[data-range]");
+  if (rg && state.topic) return goTopic(state.topic, rg.dataset.range);
+  if (e.target.closest("[data-clear]")) return goTopic(null);
+  const cp = e.target.closest("[data-copy]");
+  if (cp) navigator.clipboard?.writeText(location.href).then(() => {
+    cp.textContent = "Copied!"; setTimeout(() => (cp.textContent = "Copy link"), 1500);
+  }).catch(() => {});
+});
+window.addEventListener("popstate", () => { readHash(); render(); });
 $("sort").addEventListener("click", e => {
   const b = e.target.closest("[data-v]"); if (!b) return;
   store.s.sort = b.dataset.v; store.save(); render();
@@ -295,6 +372,7 @@ $("refresh").addEventListener("click", async () => {
   await load(); b.disabled = false; b.textContent = "Refresh";
 });
 
+readHash();
 load();
 setInterval(load, 5 * 60 * 1000);           // pick up the server's hourly refresh
 setInterval(() => state.data && render(), 60 * 1000); // keep "x min ago" fresh
