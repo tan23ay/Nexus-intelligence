@@ -3,6 +3,8 @@
 Hourly news radar for Renewable Energy, AI Infrastructure, Semiconductors, GPUs &
 Advanced Packaging (CoWoS/HBM), plus Finance, Education, Automations and Automobiles.
 
+**Live site: https://nexus-intelligence-radar.netlify.app** (refreshed every hour)
+
 ## How it runs online (Netlify)
 
 ```
@@ -21,10 +23,6 @@ then create a build hook and save its URL as the GitHub secret `NETLIFY_BUILD_HO
 
 Note: GitHub pauses scheduled workflows after 60 days with no repo activity. If the site
 stops updating, re-enable the workflow in the Actions tab.
-
-## Run it on your PC
-
-Double-click `start.bat`, or run `python local/serve.py` and open http://localhost:8787.
 
 ## Cloud version (`cloud/`)
 
