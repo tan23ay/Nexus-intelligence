@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nexus-local",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["local/serve.py", "8787"],
+      "port": 8787
+    }
+  ]
+}

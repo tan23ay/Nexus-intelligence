@@ -1,0 +1,26 @@
+# Nexus Intelligence — static site on Netlify.
+# Each build fetches the latest news (standard-library Python, no API keys) and
+# publishes site/. GitHub Actions (.github/workflows/refresh.yml) triggers a
+# rebuild every hour via a Netlify build hook.
+
+[build]
+  publish = "site"
+  # Start from the live data.json so the 10-day history carries over between builds.
+  command = "curl -fsSL \"$URL/data.json\" -o site/data.json || rm -f site/data.json; python3 local/fetch_news.py"
+
+[build.environment]
+  PYTHON_VERSION = "3.12"
+
+[[headers]]
+  for = "/data.json"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"

@@ -1,0 +1,8 @@
+site/data.json
+site/data.tmp
+__pycache__/
+node_modules/
+.next/
+.env
+.env.local
+.claude/settings.local.json

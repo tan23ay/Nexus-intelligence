@@ -1,0 +1,21 @@
+name: Hourly Netlify rebuild
+
+# Netlify has no built-in hourly rebuild, so this pings the site's build hook.
+# Setup: Netlify → Site configuration → Build & deploy → Build hooks → add hook,
+# then save its URL as the repo secret NETLIFY_BUILD_HOOK.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Netlify build
+        env:
+          HOOK: ${{ secrets.NETLIFY_BUILD_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "NETLIFY_BUILD_HOOK secret not set"; exit 1; fi
+          curl -fsS -X POST -d '{}' "$HOOK?trigger_title=hourly+news+refresh"
