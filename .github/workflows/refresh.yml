@@ -32,4 +32,8 @@ jobs:
             echo "data.json generated $gen ($((age/60)) min ago)"
             if [ "$age" -lt 3000 ]; then echo "Fresh enough, skipping."; exit 0; fi
           fi
-          curl -fsS -X POST "$HOOK"
+          HOOK=$(printf '%s' "$HOOK" | tr -d '[:space:]')   # strip stray whitespace from the pasted secret
+          # -L: Vercel may answer with a 307/308 redirect; follow it and keep the POST.
+          resp=$(curl -fsSL -X POST -w '\nHTTP %{http_code} via %{url_effective}' "$HOOK" | sed -E 's#(deploy/)[^ ?"]+#\1***#g')
+          echo "$resp"
+          echo "$resp" | grep -q '"job"' || { echo "Vercel did not accept the deploy hook (no job in response)"; exit 1; }
