@@ -3,14 +3,13 @@
 Hourly news radar for Renewable Energy, AI Infrastructure, Semiconductors, GPUs &
 Advanced Packaging (CoWoS/HBM), plus Finance, Education, Automations and Automobiles.
 
-**Live site: https://nexus-intelligence-radar.netlify.app** (refreshed every hour)
+**Live site: https://nexus-intelligence-radar.vercel.app** (refreshed every hour)
 
-## How it runs online (Netlify)
+## How it runs online (Vercel)
 
 ```
-Netlify Scheduled Function (hourly) ──POST──► Netlify build hook
-GitHub Actions (backup, only if data > 75 min old) ──┘
-Netlify build: python3 local/fetch_news.py  ──►  site/data.json  ──►  site/ published
+GitHub Actions (twice an hour, only if data > 50 min old) ──POST──► Vercel deploy hook
+Vercel build: python3 local/fetch_news.py  ──►  site/data.json  ──►  site/ published
 ```
 
 - `local/fetch_news.py` pulls ~19 RSS feeds (Python standard library only, no API keys),
@@ -22,13 +21,12 @@ Netlify build: python3 local/fetch_news.py  ──►  site/data.json  ──►
   and a matching Google News search.
 - Edit the `SOURCES` list in `local/fetch_news.py` to add or remove feeds; push to redeploy.
 
-**One-time setup:** connect this repo in Netlify (build settings come from `netlify.toml`),
-then create a build hook and save its URL as the Netlify environment variable
-`BUILD_HOOK_URL` (used by `netlify/functions/hourly-refresh.mjs`) and as the GitHub
-secret `NETLIFY_BUILD_HOOK` (backup workflow).
+**One-time setup:** import this repo in Vercel (build settings come from `vercel.json`),
+then create a deploy hook for `main` (Settings → Git → Deploy Hooks) and save its URL as
+the GitHub secret `VERCEL_DEPLOY_HOOK`.
 
-Note: GitHub cron is best-effort and pauses after 60 days with no repo activity, which is
-why the Netlify function is the main trigger.
+Note: GitHub cron is best-effort and pauses after 60 days with no repo activity. If the
+site stops updating, re-enable the workflow in the Actions tab.
 
 ## Cloud version (`cloud/`)
 

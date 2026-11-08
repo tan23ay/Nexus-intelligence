@@ -1,30 +1,35 @@
-name: Hourly Netlify rebuild (backup)
+name: Hourly Vercel rebuild
 
-# Backup trigger. The main hourly refresh is the Netlify Scheduled Function in
-# netlify/functions/hourly-refresh.mjs. GitHub cron is best-effort and often runs
-# late or not at all, so this only rebuilds when the live data is over 75 minutes old.
-# Setup: save the Netlify build hook URL as the repo secret NETLIFY_BUILD_HOOK.
+# Vercel's Hobby plan only allows daily cron jobs, so GitHub Actions triggers the
+# hourly rebuild through a Vercel deploy hook. GitHub cron is best-effort (runs can be
+# late or skipped), so this runs twice an hour and only rebuilds when the live data is
+# over 50 minutes old. Manual runs always rebuild.
+# Setup: Vercel → Project → Settings → Git → Deploy Hooks → create one for "main",
+# then save its URL as the repo secret VERCEL_DEPLOY_HOOK.
 
 on:
   schedule:
-    - cron: "41 * * * *"
+    - cron: "11,41 * * * *"
   workflow_dispatch:
+
+env:
+  SITE: https://nexus-intelligence-radar.vercel.app
 
 jobs:
   trigger:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Netlify build if data is stale
+      - name: Trigger Vercel build if data is stale
         env:
-          HOOK: ${{ secrets.NETLIFY_BUILD_HOOK }}
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          if [ -z "$HOOK" ]; then echo "NETLIFY_BUILD_HOOK secret not set"; exit 1; fi
-          gen=$(curl -fsS "https://nexus-intelligence-radar.netlify.app/data.json?t=$(date +%s)" \
+          if [ -z "$HOOK" ]; then echo "VERCEL_DEPLOY_HOOK secret not set"; exit 1; fi
+          gen=$(curl -fsS "$SITE/data.json?t=$(date +%s)" \
                 | python3 -c 'import json,sys; print(json.load(sys.stdin)["generated_at"])' || echo "")
           if [ -n "$gen" ] && [ "$FORCE" != "true" ]; then
             age=$(( $(date +%s) - $(date -d "$gen" +%s) ))
             echo "data.json generated $gen ($((age/60)) min ago)"
-            if [ "$age" -lt 4500 ]; then echo "Fresh enough, skipping."; exit 0; fi
+            if [ "$age" -lt 3000 ]; then echo "Fresh enough, skipping."; exit 0; fi
           fi
-          curl -fsS -X POST -d '{}' "$HOOK?trigger_title=hourly+news+refresh+(github+backup)"
+          curl -fsS -X POST "$HOOK"
