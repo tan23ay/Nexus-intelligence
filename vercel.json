@@ -4,6 +4,9 @@
   "installCommand": "true",
   "buildCommand": "curl -fsSL \"https://$VERCEL_PROJECT_PRODUCTION_URL/data.json\" -o site/data.json || rm -f site/data.json; python3 local/fetch_news.py",
   "outputDirectory": "site",
+  "functions": {
+    "api/news.py": { "maxDuration": 60, "includeFiles": "local/fetch_news.py" }
+  },
   "headers": [
     {
       "source": "/data.json",

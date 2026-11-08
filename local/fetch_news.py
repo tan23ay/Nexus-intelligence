@@ -19,6 +19,7 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from functools import partial
 from hashlib import sha256
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -180,10 +181,10 @@ def words(s: str) -> set[str]:
 
 
 # ----------------------------------------------------------------------------- fetch
-def fetch_feed(source: tuple[str, str, str]) -> tuple[str, list[dict], str | None]:
+def fetch_feed(source: tuple[str, str, str], timeout: float = 20) -> tuple[str, list[dict], str | None]:
     name, url, default_cat = source
     try:
-        with urlopen(Request(url, headers={"User-Agent": UA, "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*"}), timeout=20) as r:
+        with urlopen(Request(url, headers={"User-Agent": UA, "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*"}), timeout=timeout) as r:
             raw = r.read()
         root = ET.fromstring(raw)
     except Exception as e:  # network error, 403, malformed XML…
@@ -195,7 +196,11 @@ def fetch_feed(source: tuple[str, str, str]) -> tuple[str, list[dict], str | Non
     entries = root.findall(".//item") or root.findall(".//atom:entry", ns)
     for e in entries:
         if e.tag.endswith("entry"):  # Atom
-            link_el = e.find("atom:link[@rel='alternate']", ns) or e.find("atom:link", ns)
+            # Not `a or b`: an Element with no children is falsy, so `or` always skipped
+            # the rel=alternate link.
+            link_el = e.find("atom:link[@rel='alternate']", ns)
+            if link_el is None:
+                link_el = e.find("atom:link", ns)
             link = link_el.get("href") if link_el is not None else None
             title = e.findtext("atom:title", "", ns)
             summary = e.findtext("atom:summary", "", ns) or e.findtext("atom:content", "", ns)
@@ -316,7 +321,8 @@ def enrich(item: dict) -> dict:
     sc = impact(item["title"], item["summary"], primary, cat_scores, usd)
     f = funding(item["title"], item["summary"], usd, raw, primary)
     subs = subcategories(text) if primary in ("semiconductors", "gpu_production", "ai_infrastructure") else []
-    pub = item["published"] or datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    pub = min(item["published"] or now, now)  # some feeds post-date items; keep them out of the future
     return {
         "id": sha256(item["url"].encode()).hexdigest()[:16],
         "title": item["title"],
@@ -343,9 +349,10 @@ def load_existing() -> list[dict]:
         return []
 
 
-def run() -> dict:
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(pool.map(fetch_feed, SOURCES))
+def build(existing_articles: list[dict], timeout: float = 20) -> tuple[dict, int]:
+    """Fetch every feed and merge with `existing_articles`. Pure: writes nothing."""
+    with ThreadPoolExecutor(max_workers=len(SOURCES)) as pool:
+        results = list(pool.map(partial(fetch_feed, timeout=timeout), SOURCES))
 
     status = []
     fresh: list[dict] = []
@@ -354,7 +361,7 @@ def run() -> dict:
         fresh.extend(items)
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)
-    existing = {a["url"]: a for a in load_existing()
+    existing = {a["url"]: a for a in existing_articles
                 if datetime.fromisoformat(a["published_at"]) >= cutoff}
     merged = dict(existing)
     seen_titles = [words(a["title"]) for a in merged.values()]
@@ -379,6 +386,12 @@ def run() -> dict:
         "articles": articles,
         "sources": status,
     }
+    return out, added
+
+
+def run() -> dict:
+    out, added = build(load_existing())
+    status, articles = out["sources"], out["articles"]
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = DATA_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")

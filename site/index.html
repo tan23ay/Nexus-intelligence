@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nexus Intelligence</title>
+<meta name="description" content="Hourly news radar for renewable energy, AI infrastructure, semiconductors, GPUs and advanced packaging.">
+<meta name="theme-color" content="#070b14">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234c8dff'/%3E%3Cpath d='M13 4 5 14h7l-1 6 8-10h-7l1-6z' fill='%23fff'/%3E%3C/svg%3E">
 <style>
   :root {
     --bg: #070b14; --panel: #0e1422; --panel-2: #131b2d; --line: #1e2840; --line-2: #2a3654;
@@ -115,7 +118,8 @@
   }
   @media (max-width: 600px) {
     header { padding: 12px 16px; } main { padding: 16px; }
-    .brand p, .status .txt { display: none; }
+    .brand p { display: none; }
+    .status .txt { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .heroes { grid-template-columns: 1fr; }
     .card { padding: 14px; gap: 10px; }
   }
@@ -168,7 +172,7 @@ const ICON = {
 };
 const PAGE = 40;
 const LOCAL = ["localhost", "127.0.0.1"].includes(location.hostname);
-if (!LOCAL) document.getElementById("refresh").title = "Reload the latest hourly update";
+if (!LOCAL) document.getElementById("refresh").title = "Load the latest stories";
 const KEY = "nexus-local-v1";
 
 const store = (() => {
@@ -315,12 +319,31 @@ function render() {
   $("updated").textContent = `Updated ${ago(state.data.generated_at)} · ${all.length} stories`;
 }
 
+async function getJSON(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  const d = await r.json();
+  if (!Array.isArray(d.articles)) throw new Error(`${url}: no articles`);
+  return d;
+}
 async function load() {
   try {
-    const r = await fetch("data.json?t=" + Date.now(), { cache: "no-store" });
-    state.data = await r.json();
-    $("dot").style.background = "";
+    // Online: /api/news fetches the feeds live (CDN-cached ~15 min). data.json, baked
+    // into the last deploy, is the fallback. Locally the server rewrites data.json.
+    let d = null;
+    if (!LOCAL) d = await getJSON("/api/news").catch(e => (console.warn(e), null));
+    d ||= await getJSON("data.json?t=" + Date.now(), { cache: "no-store" });
+    if (state.data && d.generated_at < state.data.generated_at) d = state.data;  // never go backwards
+    state.data = d;
+    const ids = new Set(d.articles.map(a => a.id));            // forget reads of expired stories
+    const kept = [...state.reads].filter(id => ids.has(id));
+    if (kept.length !== state.reads.size) { state.reads = new Set(kept); persist(); }
+    const stale = Date.now() - new Date(d.generated_at) > 2 * 3600e3;
+    $("dot").style.background = stale ? "var(--gold)" : "";
+    $("dot").title = stale ? "Data is more than 2 hours old" : "Live";
   } catch (e) {
+    console.error(e);
+    if (state.data) return;   // keep showing what we have
     $("updated").textContent = LOCAL ? "Couldn’t load data — is the local server running?" : "Couldn’t load data — try again shortly.";
     $("dot").style.background = "var(--red)";
     return;
@@ -367,7 +390,7 @@ document.addEventListener("click", e => {
 });
 $("refresh").addEventListener("click", async () => {
   const b = $("refresh"); b.disabled = true; b.textContent = "Fetching…";
-  // Only the local server can fetch on demand; online, GitHub refreshes hourly.
+  // Locally, ask the server to re-fetch now; online, /api/news is already live.
   if (LOCAL) { try { await fetch("/api/refresh", { method: "POST" }); } catch {} }
   await load(); b.disabled = false; b.textContent = "Refresh";
 });

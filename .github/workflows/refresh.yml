@@ -1,9 +1,10 @@
 name: Hourly Vercel rebuild
 
-# Vercel's Hobby plan only allows daily cron jobs, so GitHub Actions triggers the
-# hourly rebuild through a Vercel deploy hook. GitHub cron is best-effort (runs can be
-# late or skipped), so this runs twice an hour and only rebuilds when the live data is
-# over 50 minutes old. Manual runs always rebuild.
+# Live stories come from the /api/news function; this workflow is the backup that
+# rebuilds the site so the 31-day history in data.json keeps growing. Vercel's Hobby
+# plan only allows daily cron, so GitHub triggers a Vercel deploy hook instead.
+# GitHub cron is best-effort, so this runs twice an hour and only rebuilds when the
+# baked data is over 50 minutes old. Manual runs always rebuild.
 # Setup: Vercel → Project → Settings → Git → Deploy Hooks → create one for "main",
 # then save its URL as the repo secret VERCEL_DEPLOY_HOOK.
 
@@ -25,7 +26,7 @@ jobs:
           FORCE: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           if [ -z "$HOOK" ]; then echo "VERCEL_DEPLOY_HOOK secret not set"; exit 1; fi
-          gen=$(curl -fsS "$SITE/data.json?t=$(date +%s)" \
+          gen=$(curl -fsS --max-time 30 "$SITE/data.json?t=$(date +%s)" \
                 | python3 -c 'import json,sys; print(json.load(sys.stdin)["generated_at"])' || echo "")
           if [ -n "$gen" ] && [ "$FORCE" != "true" ]; then
             age=$(( $(date +%s) - $(date -d "$gen" +%s) ))
